@@ -79,6 +79,14 @@ h2{font-size:3.4vmin;font-weight:800;letter-spacing:.15vmin;margin-bottom:.6vmin
 .logBox p{font-size:1.4vmin;line-height:1.5;color:#b0e0ff}
 .logLocked{opacity:.4;filter:grayscale(1);border-color:#555;box-shadow:none;color:#888}
 .logLocked h3{color:#888}
+
+/* НОВОЕ: Модальное окно для Экспорта/Импорта */
+#shareModal { position:absolute; inset:0; background:rgba(5,6,14,0.9); backdrop-filter:blur(5px); display:none; align-items:center; justify-content:center; z-index:100; flex-direction:column; gap:2vmin; }
+#shareModal.on { display:flex; }
+#shareTitle { font-size:2.5vmin; font-weight:800; color:#00e5ff; text-align:center; padding:0 2vmin;}
+#shareText { width:80%; height:25vmin; background:rgba(0,0,0,0.5); color:#4ade80; border:1px solid #00e5ff; border-radius:1vmin; padding:1.5vmin; font-family:monospace; resize:none; font-size:1.4vmin; outline:none;}
+#shareText:focus { border-color:#ffd700; }
+.shareBtns { display:flex; gap:1vmin; }
 </style>
 </head>
 <body>
@@ -113,6 +121,9 @@ h2{font-size:3.4vmin;font-weight:800;letter-spacing:.15vmin;margin-bottom:.6vmin
       <div class="inner">
         <h2>Выбор уровня</h2>
         <div class="sub">Собери все монеты и пройди на 100%</div>
+        <div style="display:flex; gap:1vmin; margin-bottom:1vmin;">
+            <button class="btn small gold" id="btnImportLevel">📥 Импорт уровня</button>
+        </div>
         <div class="list" id="levelList"></div>
         <button class="btn ghost" data-go="menu" style="margin-top:1.4vmin">← Назад</button>
       </div>
@@ -159,8 +170,14 @@ h2{font-size:3.4vmin;font-weight:800;letter-spacing:.15vmin;margin-bottom:.6vmin
       <div class="inner">
         <h2>Статистика</h2>
         <div class="list" id="statList" style="max-width:44vmin"></div>
-        <button class="btn danger small" id="resetBtn" style="margin-top:1.2vmin">Сбросить прогресс</button>
-        <button class="btn ghost" data-go="menu" style="margin-top:.8vmin">← Назад</button>
+        
+        <div style="display:flex; gap:1vmin; margin-top:1.5vmin; flex-wrap:wrap; justify-content:center;">
+            <button class="btn small" id="btnBackupSave">💾 Бэкап прогресса</button>
+            <button class="btn small gold" id="btnRestoreSave">📥 Восстановить</button>
+            <button class="btn danger small" id="resetBtn">🗑 Сброс</button>
+        </div>
+        
+        <button class="btn ghost" data-go="menu" style="margin-top:1.4vmin">← Назад</button>
       </div>
     </div>
 
@@ -191,6 +208,7 @@ h2{font-size:3.4vmin;font-weight:800;letter-spacing:.15vmin;margin-bottom:.6vmin
       <button class="btn small ghost" id="edBack">← Меню</button>
       <input id="edName" placeholder="Название уровня" maxlength="28">
       <button class="btn small" id="edSave">💾 Сохранить</button>
+      <button class="btn small gold" id="edExport">📤 Экспорт</button>
       <button class="btn small gold" id="edPlay">▶ Тест</button>
       <button class="btn small danger" id="edClear">🗑 Очистить</button>
       <button class="btn small ghost" id="edGridBtn">📐 Сетка</button>
@@ -211,6 +229,12 @@ h2{font-size:3.4vmin;font-weight:800;letter-spacing:.15vmin;margin-bottom:.6vmin
       <button class="tool" data-tool="block_small">
         <canvas width="40" height="40" class="tool-ic" data-t="block_small"></canvas>М. Блок
       </button>
+      <button class="tool" data-tool="deco">
+        <canvas width="40" height="40" class="tool-ic" data-t="deco"></canvas>Декор
+      </button>
+      <button class="tool" data-tool="deco_small">
+        <canvas width="40" height="40" class="tool-ic" data-t="deco_small"></canvas>М. Декор
+      </button>
       <button class="tool" data-tool="coin">
         <canvas width="40" height="40" class="tool-ic" data-t="coin"></canvas>Монета
       </button>
@@ -223,15 +247,22 @@ h2{font-size:3.4vmin;font-weight:800;letter-spacing:.15vmin;margin-bottom:.6vmin
       <button class="tool" data-tool="saw">
         <canvas width="40" height="40" class="tool-ic" data-t="saw"></canvas>Пила
       </button>
-      <button class="tool" data-tool="grav">
-        <canvas width="40" height="40" class="tool-ic" data-t="grav"></canvas>Гравитация
-      </button>
       <button class="tool" data-tool="end">
         <canvas width="40" height="40" class="tool-ic" data-t="end"></canvas>Финиш
       </button>
       <button class="tool" data-tool="erase">
         <canvas width="40" height="40" class="tool-ic" data-t="erase"></canvas>Ластик
       </button>
+    </div>
+
+    <!-- Модальное окно для кодов -->
+    <div id="shareModal">
+        <div id="shareTitle">Код</div>
+        <textarea id="shareText" spellcheck="false" placeholder="Вставьте код сюда..."></textarea>
+        <div class="shareBtns">
+            <button class="btn" id="shareActionBtn">Действие</button>
+            <button class="btn ghost" id="shareCloseBtn">Закрыть</button>
+        </div>
     </div>
 
     <div id="toast"></div>
@@ -255,7 +286,15 @@ const CAM_OFFSET = 260;
 const $ = s => document.querySelector(s);
 const clamp = (v,a,b) => v<a?a:v>b?b:v;
 
-const SAVE_KEY = 'gdclone_save_v7';
+// Утилиты для Base64 (поддержка кириллицы)
+function encodeB64(str) {
+    return btoa(unescape(encodeURIComponent(str)));
+}
+function decodeB64(str) {
+    try { return decodeURIComponent(escape(atob(str))); } catch(e) { return null; }
+}
+
+const SAVE_KEY = 'gdclone_save_v9'; // Обновили версию
 let save = {
   achievements: [], skins: ['default'], selectedSkin: 'default',
   coins: 0, totalJumps: 0, totalDeaths: 0,
@@ -278,8 +317,9 @@ function writeSave(){ try{ localStorage.setItem(SAVE_KEY, JSON.stringify(save));
 const STORY_LOGS = [
   { title: "Лог 01: Инициализация", text: "Привет, Бегун. Ты застрял в цифровом измерении. Система нестабильна, но у тебя есть шанс выбраться. Прыгай и собирай данные (монеты).", req: null },
   { title: "Лог 02: Антивирус", text: "Красные шипы — это не просто препятствия. Это антивирусные программы. Не касайся их, иначе система сотрет твой код.", req: 'lvl1' },
-  { title: "Лог 03: Инверсия", text: "Гравитация здесь — это переменная. Мы изменили ее для тебя. Привыкай ходить по потолку, если хочешь выжить.", req: 'lvl2' },
-  { title: "Лог 04: Ядро", text: "Ты почти у цели. Огненные стены — последний рубеж обороны. Взломай ядро и получи свободу.", req: 'lvl3' }
+  { title: "Лог 03: Инверсия", text: "Раньше здесь была изменена гравитация, но мы отключили этот модуль. Теперь полагайся только на свои рефлексы и орбы.", req: 'lvl2' },
+  { title: "Лог 04: Ядро", text: "Ты почти у цели. Огненные стены — последний рубеж обороны. Взломай ядро и получи свободу.", req: 'lvl3' },
+  { title: "Лог 05: Неон", text: "Остатки системы сияют неоном. Это последний тест. Покажи, на что ты способен на максимальной скорости.", req: 'lvl4' }
 ];
 
 const ACHIEVEMENTS = [
@@ -298,12 +338,8 @@ const ACHIEVEMENTS = [
   {id:'edplay',  icon:'🧪', name:'Тестировщик',     desc:'Пройди свой уровень',               check:s=>(s.customCompleted||0)>=1},
 ];
 
-// НОВАЯ СИСТЕМА СКИНОВ (БЕЛЫЙ БАЗОВЫЙ + ЦВЕТА И ТЕКСТУРЫ)
 const SKINS = [
-  // Базовый белый квадрат
   {id:'default', name:'Белый', color:'#ffffff', color2:'#00e5ff', pattern:'solid', req:null},
-  
-  // Открываются за ачивки (цвета и паттерны)
   {id:'fire',    name:'Огонь',    color:'#ff6b1a', color2:'#ffb347', pattern:'cross',    req:'jump1'},
   {id:'emerald', name:'Изумруд',  color:'#2ecc71', color2:'#0f8a44', pattern:'outline',  req:'lvl1'},
   {id:'violet',  name:'Аметист',  color:'#a855f7', color2:'#6b21a8', pattern:'dot',      req:'coin10'},
@@ -311,8 +347,6 @@ const SKINS = [
   {id:'void',    name:'Пустота',  color:'#23233a', color2:'#e0e0ff', pattern:'hollow',   req:'die100'},
   {id:'crimson', name:'Багровый', color:'#ff2d55', color2:'#7a0b1e', pattern:'checker',  req:'edplay'},
   {id:'rainbow', name:'Радуга',   color:'rainbow', color2:'#ffffff', pattern:'glitch',   req:'lvlall'},
-  
-  // Магазин
   {id:'neon',    name:'Неон',     color:'#00ff00', color2:'#005500', pattern:'cross',    price:50},
   {id:'shadow',  name:'Тень',     color:'#333333', color2:'#000000', pattern:'solid',    price:100},
   {id:'glitch',  name:'Глитч',    color:'#ff00ff', color2:'#00ffff', pattern:'glitch',   price:200}
@@ -323,11 +357,12 @@ const S=(x,y)=>({t:'spike',x,y,w:1,h:1});
 const Ss=(x,y)=>({t:'spike_small',x,y,w:0.5,h:0.5});
 const B=(x,y)=>({t:'block',x,y,w:1,h:1});
 const Bs=(x,y)=>({t:'block_small',x,y,w:0.5,h:0.5});
+const D=(x,y)=>({t:'deco',x,y,w:1,h:1});
+const Ds=(x,y)=>({t:'deco_small',x,y,w:0.5,h:0.5});
 const C=(x,y)=>({t:'coin', x,y,w:1,h:1});
 const P=(x,y)=>({t:'pad',  x,y,w:1,h:1});
 const O=(x,y)=>({t:'orb',  x,y,w:1,h:1});
 const Sw=(x,y)=>({t:'saw',  x,y,w:1,h:1});
-const G=(x,y)=>({t:'grav', x,y,w:1,h:2});
 const E=(x,y)=>({t:'end',  x,y,w:1,h:1});
 
 const BUILTIN_LEVELS = [
@@ -346,19 +381,18 @@ const BUILTIN_LEVELS = [
     ]
   },
   {
-    id:'lvl2', name:'Гравитационный сдвиг', diff:'Средне', diffColor:'#fbbf24',
+    id:'lvl2', name:'Темная зона', diff:'Средне', diffColor:'#fbbf24',
     bg:['#2d1b4e','#5b21b6'], ground:'#150a24',
     objects:[
       S(14,0), S(15,0), B(26,0), C(26,1),
       S(38,0), S(39,0), S(40,0),
       P(52,0), S(66,0), S(67,0),
       B(80,0), B(81,0), C(80,1), C(81,1),
-      G(96, 0), 
-      S(108, -2), S(109, -2), S(110, -2),
-      S(122, -2), O(134, -2), 
-      S(150, -2), S(151, -2), S(152, -2), S(153, -2),
-      B(168, -2), C(168, -1),
-      G(182, 0), 
+      Sw(96,0), S(108,0), S(109,0), S(110,0),
+      S(122,0), O(134, 2), 
+      S(150,0), S(151,0), S(152,0), S(153,0),
+      B(168,0), C(168,1),
+      S(182,0), S(183,0),
       S(196,0), S(197,0), S(198,0),
       B(212,0), B(213,0), B(214,0), C(213,1),
       S(228,0), S(229,0), E(244,0)
@@ -382,6 +416,35 @@ const BUILTIN_LEVELS = [
       S(212,0), S(213,0), O(219, 1),
       S(226,0), S(227,0), S(228,0),
       S(240,0), S(241,0), E(256,0)
+    ]
+  },
+  {
+    id:'lvl4', name:'Неоновый рывок', diff:'Безумие', diffColor:'#ff00ff',
+    bg:['#1a0033','#330066'], ground:'#110022',
+    objects:[
+      D(10,4), D(11,4), D(10,3), D(11,3),
+      D(25,6), D(26,6), D(27,6),
+      D(40,2), Ds(40.5,2), D(41,2),
+      D(60,5), D(61,5), D(62,5), D(63,5),
+      D(85,4), D(86,4), D(87,4),
+      D(110,6), D(111,6), D(112,6),
+      D(140,3), D(141,3), D(142,3), D(143,3),
+      S(15,0), S(16,0), 
+      Ss(30,0), Ss(30.5,0), C(30,1),
+      B(45,0), C(45,1),
+      Sw(60,2), 
+      P(70,0), S(85,0), S(86,0),
+      O(100,2), 
+      B(115,0), B(116,0), C(115,1), C(116,1),
+      S(130,0), S(131,0), S(132,0),
+      Sw(145,0), 
+      Bs(160,0), Bs(160.5,0), Ss(161,0),
+      S(175,0), P(185,0),
+      O(200,2), S(210,0), S(211,0),
+      B(225,0), B(226,0), B(227,0), C(226,1),
+      Sw(240,2),
+      S(255,0), S(256,0), S(257,0),
+      S(270,0), S(271,0), E(285,0)
     ]
   }
 ];
@@ -419,6 +482,10 @@ function drawToolIcons(){
       cx.fillStyle = '#3fd0e8'; cx.fillRect(-12,-12,24,24); cx.strokeStyle = '#fff'; cx.strokeRect(-12,-12,24,24);
     } else if(t === 'block_small'){
       cx.fillStyle = '#3fd0e8'; cx.fillRect(-6,-6,12,12); cx.strokeStyle = '#fff'; cx.strokeRect(-6,-6,12,12);
+    } else if(t === 'deco'){
+      cx.fillStyle = 'rgba(255,255,255,0.2)'; cx.fillRect(-12,-12,24,24); cx.strokeStyle = '#888'; cx.strokeRect(-12,-12,24,24);
+    } else if(t === 'deco_small'){
+      cx.fillStyle = 'rgba(255,255,255,0.2)'; cx.fillRect(-6,-6,12,12); cx.strokeStyle = '#888'; cx.strokeRect(-6,-6,12,12);
     } else if(t === 'coin'){
       cx.fillStyle = '#ffd700'; cx.beginPath(); cx.arc(0,0,10,0,6.29); cx.fill();
     } else if(t === 'pad'){
@@ -435,10 +502,6 @@ function drawToolIcons(){
       }
       cx.closePath(); cx.fill();
       cx.fillStyle = '#333'; cx.beginPath(); cx.arc(0,0,4,0,6.29); cx.fill();
-    } else if(t === 'grav'){
-      cx.fillStyle = 'rgba(0,229,255,0.4)'; cx.strokeStyle = '#00e5ff'; cx.lineWidth = 3;
-      cx.beginPath(); cx.ellipse(0, 0, 8, 14, 0, 0, 6.29); cx.fill(); cx.stroke();
-      cx.fillStyle = '#fff'; cx.beginPath(); cx.moveTo(0,-6); cx.lineTo(4,4); cx.lineTo(-4,4); cx.fill();
     } else if(t === 'end'){
       cx.fillStyle = '#fff'; cx.fillRect(-4,-14,3,28);
       cx.fillStyle = '#4ade80'; cx.fillRect(-1,-14,12,8);
@@ -496,22 +559,18 @@ function checkAch(){
   }
 }
 
-// НОВАЯ ОТРИСОВКА КВАДРАТНЫХ СКИНОВ С ТЕКСТУРАМИ
 function drawSkin(c, sk, size, rot, alpha){
   c.save();
   c.globalAlpha = alpha === undefined ? 1 : alpha;
   c.rotate(rot || 0);
 
-  // Обработка радуги
   let main = sk.color === 'rainbow' ? 'hsl(' + ((Date.now()/12)%360) + ',100%,60%)' : sk.color;
   let edge = sk.color === 'rainbow' ? '#ffffff' : sk.color2;
   let half = size / 2;
 
-  // Основа - квадрат
   c.fillStyle = main;
   c.fillRect(-half, -half, size, size);
 
-  // Паттерны
   c.lineWidth = Math.max(2, size * 0.1);
   c.strokeStyle = edge;
 
@@ -521,28 +580,19 @@ function drawSkin(c, sk, size, rot, alpha){
     c.strokeRect(-half, -half, size, size);
   } else if (sk.pattern === 'cross') {
     c.beginPath();
-    c.moveTo(0, -half*0.6);
-    c.lineTo(0, half*0.6);
-    c.moveTo(-half*0.6, 0);
-    c.lineTo(half*0.6, 0);
+    c.moveTo(0, -half*0.6); c.lineTo(0, half*0.6);
+    c.moveTo(-half*0.6, 0); c.lineTo(half*0.6, 0);
     c.stroke();
   } else if (sk.pattern === 'dot') {
-    c.beginPath();
-    c.arc(0, 0, size * 0.25, 0, Math.PI*2);
-    c.fillStyle = edge;
-    c.fill();
+    c.beginPath(); c.arc(0, 0, size * 0.25, 0, Math.PI*2);
+    c.fillStyle = edge; c.fill();
   } else if (sk.pattern === 'diagonal') {
-    c.save();
-    c.beginPath();
-    c.rect(-half, -half, size, size);
-    c.clip();
+    c.save(); c.beginPath(); c.rect(-half, -half, size, size); c.clip();
     c.beginPath();
     for (let i = -size; i < size * 2; i += size * 0.4) {
-      c.moveTo(i, -half);
-      c.lineTo(i + size, half);
+      c.moveTo(i, -half); c.lineTo(i + size, half);
     }
-    c.stroke();
-    c.restore();
+    c.stroke(); c.restore();
   } else if (sk.pattern === 'hollow') {
     c.fillStyle = 'rgba(0,0,0,0.8)';
     c.fillRect(-half*0.4, -half*0.4, size*0.8, size*0.8);
@@ -553,8 +603,7 @@ function drawSkin(c, sk, size, rot, alpha){
     for(let i=0; i<4; i++){
       for(let j=0; j<4; j++){
         if((i+j)%2===0){
-          c.fillStyle = edge;
-          c.fillRect(-half + i*sq, -half + j*sq, sq, sq);
+          c.fillStyle = edge; c.fillRect(-half + i*sq, -half + j*sq, sq, sq);
         }
       }
     }
@@ -566,7 +615,6 @@ function drawSkin(c, sk, size, rot, alpha){
     }
     c.strokeRect(-half, -half, size, size);
   } else {
-    // solid (базовый белый)
     c.strokeRect(-half, -half, size, size);
   }
 
@@ -602,7 +650,6 @@ function startLevel(level, opts){
     isCustom: !!opts.custom,
     returnTo: opts.returnTo || null,
     player: { x:0, y:GROUND_Y-PLAYER_SIZE, vy:0, rot:0, onGround:true, alive:true, size:PLAYER_SIZE },
-    gravityDir: 1,
     camX: -CAM_OFFSET,
     attempts: 1,
     coins: 0,
@@ -629,7 +676,7 @@ function startLevel(level, opts){
 function jump(g) {
   const p = g.player;
   if(p.onGround || g.onOrb) {
-    p.vy = -JUMP_V * g.gravityDir;
+    p.vy = -JUMP_V;
     p.onGround = false;
     g.onOrb = false;
     save.totalJumps++;
@@ -674,7 +721,7 @@ function updateGame(dt){
       const pc = {x: p.x + p.size/2, y: p.y + p.size/2};
       const dx = pc.x - oc.x, dy = pc.y - oc.y;
       if(dx*dx + dy*dy < (oc.r + p.size*0.6)*(oc.r + p.size*0.6)) {
-        p.vy = -PAD_V * g.gravityDir;
+        p.vy = -PAD_V;
         p.onGround = false;
         g.onOrb = true;
         g.shake = 4;
@@ -685,33 +732,20 @@ function updateGame(dt){
   }
   g.justPressedJump = false;
 
-  p.vy += GRAVITY * g.gravityDir * dt;
+  p.vy += GRAVITY * dt;
   const prevBottom = p.y + p.size;
-  const prevTop = p.y;
   p.x += SPEED*dt;
   p.y += p.vy*dt;
   p.onGround = false;
 
-  if(g.gravityDir === 1) {
-    if(p.y + p.size >= GROUND_Y){
-      p.y = GROUND_Y - p.size;
-      p.vy = 0;
-      p.onGround = true;
-    }
-    if(p.y < CEIL_Y) {
-      p.y = CEIL_Y;
-      if(p.vy < 0) p.vy = 0;
-    }
-  } else {
-    if(p.y <= CEIL_Y){
-      p.y = CEIL_Y;
-      p.vy = 0;
-      p.onGround = true;
-    }
-    if(p.y + p.size > GROUND_Y) {
-      p.y = GROUND_Y - p.size;
-      if(p.vy > 0) p.vy = 0;
-    }
+  if(p.y + p.size >= GROUND_Y){
+    p.y = GROUND_Y - p.size;
+    p.vy = 0;
+    p.onGround = true;
+  }
+  if(p.y < CEIL_Y) {
+    p.y = CEIL_Y;
+    if(p.vy < 0) p.vy = 0;
   }
 
   const objs = g.objects;
@@ -721,18 +755,10 @@ function updateGame(dt){
     if(o.t !== 'block' && o.t !== 'block_small') continue;
     const r = objRect(o);
     if(p.x + p.size > r.x && p.x < r.x + r.w){
-      if(g.gravityDir === 1) {
-        if(p.vy > 0 && prevBottom <= r.y + 2 && p.y + p.size >= r.y){
-          p.y = r.y - p.size;
-          p.vy = 0;
-          p.onGround = true;
-        }
-      } else {
-        if(p.vy < 0 && prevTop >= r.y + r.h - 2 && p.y <= r.y + r.h){
-          p.y = r.y + r.h;
-          p.vy = 0;
-          p.onGround = true;
-        }
+      if(p.vy > 0 && prevBottom <= r.y + 2 && p.y + p.size >= r.y){
+        p.y = r.y - p.size;
+        p.vy = 0;
+        p.onGround = true;
       }
     }
   }
@@ -743,29 +769,11 @@ function updateGame(dt){
     const r = objRect(o);
     const padR = { x:r.x+4, y:r.y+r.h-14, w:r.w-8, h:14 };
     if(aabb({x:p.x,y:p.y,w:p.size,h:p.size}, padR, 1)){
-      if(p.vy * g.gravityDir > -200){
-        p.vy = -PAD_V * g.gravityDir;
+      if(p.vy > -200){
+        p.vy = -PAD_V;
         p.onGround = false;
         g.shake = 6;
       }
-    }
-  }
-
-  for(let i=0;i<objs.length;i++){
-    const o = objs[i];
-    if(o.t !== 'grav') continue;
-    const r = objRect(o);
-    if(aabb({x:p.x,y:p.y,w:p.size,h:p.size}, r, 2)){
-      if(g.gravityDir === 1) {
-        g.gravityDir = -1;
-        p.vy = -Math.abs(p.vy);
-      } else {
-        g.gravityDir = 1;
-        p.vy = Math.abs(p.vy);
-      }
-      g.shake = 10;
-      spawnParticles(r.x+r.w/2, r.y+r.h/2, '#00e5ff', 15);
-      p.x += 20;
     }
   }
 
@@ -794,8 +802,7 @@ function updateGame(dt){
       if(aabb(pb, hr, 1)){ killPlayer(); return; }
     } else if(o.t === 'block' || o.t === 'block_small'){
       const r = objRect(o);
-      if(g.gravityDir === 1 && p.vy === 0 && Math.abs(p.y + p.size - r.y) < 2) continue;
-      if(g.gravityDir === -1 && p.vy === 0 && Math.abs(p.y - (r.y+r.h)) < 2) continue;
+      if(p.vy === 0 && Math.abs(p.y + p.size - r.y) < 2) continue;
       if(aabb(pb, r, 2.5)){ killPlayer(); return; }
     } else if(o.t === 'saw'){
       const r = objRect(o);
@@ -809,7 +816,7 @@ function updateGame(dt){
   }
 
   if(!p.onGround){
-    p.rot += (Math.PI*2/0.56)*dt * g.gravityDir;
+    p.rot += (Math.PI*2/0.56)*dt;
     g.trail.push({ x: p.x, y: p.y, rot: p.rot });
     if (g.trail.length > 8) g.trail.shift();
   } else {
@@ -1039,6 +1046,18 @@ function drawObjects(g, camX){
       ctx.strokeStyle = 'rgba(255,255,255,0.14)'; ctx.lineWidth = 1;
       ctx.strokeRect(sx+5, r.y+5, r.w-10, r.h-10);
     }
+    else if(o.t === 'deco' || o.t === 'deco_small'){
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
+      ctx.fillRect(sx+1, r.y+1, r.w-2, r.h-2);
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+      ctx.strokeRect(sx+1.5, r.y+1.5, r.w-3, r.h-3);
+      ctx.beginPath();
+      ctx.moveTo(sx+6, r.y+6); ctx.lineTo(sx+r.w-6, r.y+r.h-6);
+      ctx.moveTo(sx+r.w-6, r.y+6); ctx.lineTo(sx+6, r.y+r.h-6);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+      ctx.stroke();
+    }
     else if(o.t === 'coin'){
       if(g.collected[i]) continue;
       const cx = sx + r.w/2, cy = r.y + r.h/2;
@@ -1081,19 +1100,6 @@ function drawObjects(g, camX){
       ctx.beginPath(); ctx.arc(0,0,10,0,6.29); ctx.fillStyle = '#333'; ctx.fill();
       ctx.restore();
     }
-    else if(o.t === 'grav'){
-      const cx = sx + r.w/2, cy = r.y + r.h/2;
-      ctx.save(); ctx.translate(cx, cy);
-      const rg = ctx.createLinearGradient(0, -r.h/2, 0, r.h/2);
-      rg.addColorStop(0, '#00e5ff'); rg.addColorStop(1, '#a855f7');
-      ctx.fillStyle = rg; ctx.globalAlpha = 0.7;
-      ctx.fillRect(-r.w/2, -r.h/2, r.w, r.h);
-      ctx.globalAlpha = 1; ctx.lineWidth = 3; ctx.strokeStyle = '#fff';
-      ctx.strokeRect(-r.w/2+2, -r.h/2+2, r.w-4, r.h-4);
-      ctx.fillStyle = '#fff';
-      ctx.beginPath(); ctx.moveTo(0, -10); ctx.lineTo(8, 10); ctx.lineTo(-8, 10); ctx.fill();
-      ctx.restore();
-    }
     else if(o.t === 'end'){
       ctx.fillStyle = '#e8e8ff';
       ctx.fillRect(sx+r.w/2-3, r.y-120, 6, r.h+120);
@@ -1120,7 +1126,6 @@ function drawPlayer(g){
   
   ctx.save();
 
-  // Шлейф
   if (g.trail && g.trail.length > 0) {
     for (let i = 0; i < g.trail.length; i++) {
       const tr = g.trail[i];
@@ -1134,7 +1139,6 @@ function drawPlayer(g){
     }
   }
 
-  // Свечение
   ctx.globalAlpha = 0.4;
   const gl = ctx.createRadialGradient(sx+p.size/2, sy+p.size/2, 0, sx+p.size/2, sy+p.size/2, 48);
   gl.addColorStop(0, sk.color==='rainbow' ? 'hsl('+((Date.now()/12)%360)+',100%,60%)' : sk.color);
@@ -1143,7 +1147,6 @@ function drawPlayer(g){
   ctx.fillRect(sx-24, sy-24, p.size+48, p.size+48);
   ctx.restore();
 
-  // Сам игрок
   ctx.save();
   ctx.translate(sx+p.size/2, sy+p.size/2);
   drawSkin(ctx, sk, p.size, p.rot, 1);
@@ -1202,11 +1205,11 @@ function drawEditor(now){
     const tool = ed.tool;
     const col = tool==='erase' ? 'rgba(255,80,80,0.85)' : tool.includes('spike') ? 'rgba(255,107,107,0.85)'
       : tool.includes('block') ? 'rgba(63,208,232,0.85)' : tool==='coin' ? 'rgba(255,215,0,0.85)'
-      : 'rgba(255,255,255,0.85)';
+      : tool.includes('deco') ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.85)';
       
     ctx.strokeStyle = col;
     ctx.lineWidth = 2.5;
-    const hSize = tool === 'grav' ? snapGrid*2 : snapGrid;
+    const hSize = snapGrid;
     ctx.strokeRect(hx+1.5, GROUND_Y - oy*GRID - hSize + 1.5, snapGrid-3, hSize-3);
     ctx.fillStyle = col.replace('0.85','0.13');
     ctx.fillRect(hx, GROUND_Y - oy*GRID - hSize, snapGrid, hSize);
@@ -1251,7 +1254,6 @@ function edPlace(mx, my, erase){
   if (gx < -8 || oy < 0 || oy > 11) return;
 
   let newObj = { t: ed.tool, x: gx, y: oy, w: isSmall ? 0.5 : 1, h: isSmall ? 0.5 : 1 };
-  if (ed.tool === 'grav') { newObj.h = 2; newObj.w = 1; newObj.x = Math.round(gx); }
 
   ed.level.objects = ed.level.objects.filter(o => o.t === 'end' || !(Math.abs(o.x - newObj.x) < 0.01 && Math.abs(o.y - newObj.y) < 0.01));
   
@@ -1372,6 +1374,7 @@ function renderStory(){
   if(save.completed.includes('lvl1')) unlockedCount++;
   if(save.completed.includes('lvl2')) unlockedCount++;
   if(save.completed.includes('lvl3')) unlockedCount++;
+  if(save.completed.includes('lvl4')) unlockedCount++;
 
   STORY_LOGS.forEach((log, idx) => {
     const isUnlocked = idx < unlockedCount;
@@ -1541,6 +1544,109 @@ function renderStats(){
   add('Достижений', save.achievements.length + ' / ' + ACHIEVEMENTS.length);
   add('Скинов открыто', save.skins.length + ' / ' + SKINS.length);
 }
+
+// --- МОДАЛЬНОЕ ОКНО (Экспорт/Импорт) ---
+let shareAction = null;
+const modal = $('#shareModal');
+const shareTitle = $('#shareTitle');
+const shareText = $('#shareText');
+const shareBtn = $('#shareActionBtn');
+const shareClose = $('#shareCloseBtn');
+
+function showShare(title, text, btnText, action) {
+    shareTitle.textContent = title;
+    shareText.value = text;
+    shareText.readOnly = (btnText === 'Копировать');
+    shareBtn.textContent = btnText;
+    shareAction = action;
+    modal.classList.add('on');
+    if (btnText === 'Импорт') {
+        shareText.focus();
+    }
+}
+
+shareClose.onclick = () => modal.classList.remove('on');
+shareBtn.onclick = () => {
+    if (shareAction) shareAction();
+};
+
+// Экспорт уровня
+$('#edExport').addEventListener('click', () => {
+    saveEditorLevel(); // Сначала сохраняем
+    const data = JSON.stringify(editor.level);
+    const code = encodeB64(data);
+    showShare('Код вашего уровня (скопируйте)', code, 'Копировать', () => {
+        shareText.select();
+        document.execCommand('copy');
+        toast('📋 Скопировано в буфер!');
+        modal.classList.remove('on');
+    });
+});
+
+// Импорт уровня
+$('#btnImportLevel').addEventListener('click', () => {
+    showShare('Вставьте код уровня', '', 'Импорт', () => {
+        const code = shareText.value.trim();
+        if(!code) return;
+        const json = decodeB64(code);
+        if(json) {
+            try {
+                const lvl = JSON.parse(json);
+                if(lvl && lvl.objects && lvl.name) {
+                    lvl.id = 'custom_' + Date.now();
+                    save.customLevels.push(lvl);
+                    writeSave();
+                    renderLevels();
+                    toast('📥 Уровень импортирован!');
+                    modal.classList.remove('on');
+                } else {
+                    toast('❌ Неверный формат');
+                }
+            } catch(e) { toast('❌ Ошибка чтения'); }
+        } else {
+            toast('❌ Неверный код');
+        }
+    });
+});
+
+// Бэкап прогресса
+$('#btnBackupSave').addEventListener('click', () => {
+    const data = JSON.stringify(save);
+    const code = encodeB64(data);
+    showShare('Код сохранения (скопируйте)', code, 'Копировать', () => {
+        shareText.select();
+        document.execCommand('copy');
+        toast('📋 Скопировано в буфер!');
+        modal.classList.remove('on');
+    });
+});
+
+// Восстановление прогресса
+$('#btnRestoreSave').addEventListener('click', () => {
+    showShare('Вставьте код сохранения', '', 'Восстановить', () => {
+        const code = shareText.value.trim();
+        if(!code) return;
+        const json = decodeB64(code);
+        if(json) {
+            try {
+                const data = JSON.parse(json);
+                if(data && data.skins && data.achievements) {
+                    save = data;
+                    writeSave();
+                    renderStats(); renderSkins(); renderShop(); renderAch(); renderLevels();
+                    toast('✅ Прогресс восстановлен!');
+                    modal.classList.remove('on');
+                } else {
+                    toast('❌ Неверный формат');
+                }
+            } catch(e) { toast('❌ Ошибка чтения'); }
+        } else {
+            toast('❌ Неверный код');
+        }
+    });
+});
+
+// --- КОНЕЦ МОДАЛЬНОГО ОКНА ---
 
 const keys = {};
 document.addEventListener('keydown', e=>{
